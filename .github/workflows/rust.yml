@@ -11,15 +11,59 @@ env:
 
 jobs:
   build:
+    runs-on: ${{ matrix.config.os }}
+    env: ${{ matrix.config.env }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+        config:
+          - {
+              os: "ubuntu-latest",
+              arch: "amd64",
+              args: "",
+              env: {},
+            }
+          - {
+              os: "ubuntu-latest",
+              arch: "aarch64",
+              args: "--target aarch64-unknown-linux-gnu",
+              env: { OPENSSL_DIR: "/usr/local/openssl-aarch64" },
+            }
+          - {
+              os: "macos-latest",
+              arch: "amd64",
+              args: "",
+              env: {},
+            }
+          - {
+              os: "windows-latest",
+              arch: "amd64",
+              args: "",
+              env: {},
+            }
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: setup for cross-compiled aarch64 build
+      if: matrix.config.arch == 'aarch64'
+      run: |
+        sudo apt update
+        sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        cd /tmp
+        git clone https://github.com/openssl/openssl
+        cd openssl
+        git checkout OpenSSL_1_1_1l
+        sudo mkdir -p $OPENSSL_DIR
+        ./Configure linux-aarch64 --prefix=$OPENSSL_DIR --openssldir=$OPENSSL_DIR shared
+        make CC=aarch64-linux-gnu-gcc
+        sudo make install
+        rustup target add aarch64-unknown-linux-gnu
+        echo '[target.aarch64-unknown-linux-gnu]' >> ${HOME}/.cargo/config.toml
+        echo 'linker = "aarch64-linux-gnu-gcc"' >> ${HOME}/.cargo/config.toml
+
     - name: Build
-      run: cargo build
+      run: cargo build ${{ matrix.config.args }}
+
     - name: Run tests
       run: cargo test
